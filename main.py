@@ -1,65 +1,64 @@
 import pandas as pd
 import numpy as np
-import re
-import string
-import nltk
 import os
-from nltk.corpus import stopwords
-from sklearn.feature_extraction.text import TfidfVectorizer
+import pickle
 from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, classification_report
-import joblib
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import PassiveAggressiveClassifier
 
-# Ensure necessary resources are available
-nltk.download('stopwords')
+# Define file paths
+TRUE_PATH = "data/True.csv"
+FAKE_PATH = "data/Fake.csv"
+FEEDBACK_PATH = "data/feedback.csv"
+MODEL_PATH = "models/fake_news_model.pkl"
+VECTORIZER_PATH = "models/tfidf_vectorizer.pkl"
 
-# Load Fake and True datasets
-fake_df = pd.read_csv('data/Fake.csv')
-true_df = pd.read_csv('data/True.csv')
+# Load and combine original data
+def load_data():
+    true_df = pd.read_csv(TRUE_PATH)
+    fake_df = pd.read_csv(FAKE_PATH)
 
-# Add labels
-fake_df['label'] = 1  # 1 = Fake
-true_df['label'] = 0  # 0 = Real
+    true_df["label"] = "REAL"
+    fake_df["label"] = "FAKE"
 
-# Merge and shuffle
-data = pd.concat([fake_df, true_df], ignore_index=True)
-data = data[['title', 'text', 'label']].dropna()
-data['content'] = data['title'] + " " + data['text']
+    df = pd.concat([true_df, fake_df], ignore_index=True)
+    return df[["title", "text", "label"]]
 
-# Clean text function
-def clean_text(text):
-    text = text.lower()
-    text = re.sub(r'<.*?>', '', text)
-    text = re.sub(r'[^a-zA-Z]', ' ', text)
-    text = text.translate(str.maketrans('', '', string.punctuation))
-    words = text.split()
-    stop_words = set(stopwords.words('english'))
-    filtered = [w for w in words if w not in stop_words]
-    return ' '.join(filtered)
+# Load feedback data if available
+def load_feedback_data():
+    if os.path.exists(FEEDBACK_PATH) and os.path.getsize(FEEDBACK_PATH) > 0:
+        return pd.read_csv(FEEDBACK_PATH)
+    return pd.DataFrame(columns=["title", "text", "label"])
 
-# Apply cleaning
-data['cleaned'] = data['content'].apply(clean_text)
+# Train the model and save it
+def train_and_save():
+    base_data = load_data()
+    feedback_data = load_feedback_data()
+    combined_data = pd.concat([base_data, feedback_data], ignore_index=True)
 
-# TF-IDF Vectorization
-vectorizer = TfidfVectorizer(max_features=5000)
-X = vectorizer.fit_transform(data['cleaned']).toarray()
-y = data['label']
+    combined_data.dropna(subset=["title", "text", "label"], inplace=True)
+    combined_data["content"] = combined_data["title"] + " " + combined_data["text"]
 
-# Split dataset
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    X = combined_data["content"]
+    y = combined_data["label"]
 
-# Model training
-model = LogisticRegression()
-model.fit(X_train, y_train)
+    tfidf_vectorizer = TfidfVectorizer(stop_words="english", max_df=0.7)
+    X_tfidf = tfidf_vectorizer.fit_transform(X)
 
-# Evaluation
-y_pred = model.predict(X_test)
-print("✅ Accuracy:", accuracy_score(y_test, y_pred))
-print("📊 Classification Report:\n", classification_report(y_test, y_pred))
+    X_train, X_test, y_train, y_test = train_test_split(X_tfidf, y, test_size=0.2, random_state=42)
 
-# Save model and vectorizer
-os.makedirs('models', exist_ok=True)
-joblib.dump(model, 'models/fake_news_model.pkl')
-joblib.dump(vectorizer, 'models/vectorizer.pkl')
-print("✅ Model and vectorizer saved in 'models/' folder.")
+    model = PassiveAggressiveClassifier(max_iter=1000)
+    model.fit(X_train, y_train)
+
+    os.makedirs("models", exist_ok=True)
+    with open(MODEL_PATH, "wb") as model_file:
+        pickle.dump(model, model_file)
+    with open(VECTORIZER_PATH, "wb") as vec_file:
+        pickle.dump(tfidf_vectorizer, vec_file)
+
+    accuracy = model.score(X_test, y_test)
+    print(f"✅ Model trained and saved successfully. Accuracy: {accuracy:.2f}")
+
+# Execute
+if __name__ == "__main__":
+    train_and_save()

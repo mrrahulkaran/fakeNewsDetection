@@ -1,57 +1,97 @@
-# app.py
-
 import streamlit as st
+import pandas as pd
 import joblib
-import string
-import numpy as np
+import os
+
+# Set page configuration
+st.set_page_config(page_title="🕵️ Fake News Detector", page_icon="📰", layout="centered")
+
+# File paths
+MODEL_PATH = "models/fake_news_model.pkl"
+VECTORIZER_PATH = "models/tfidf_vectorizer.pkl"
+FEEDBACK_PATH = "data/feedback.csv"
 
 # Load model and vectorizer
-model = joblib.load("models/fake_news_model.pkl")
-vectorizer = joblib.load("models/vectorizer.pkl")
+model = joblib.load(MODEL_PATH)
+vectorizer = joblib.load(VECTORIZER_PATH)
 
-# Text cleaning function
-def clean_text(text):
-    text = text.lower()
-    text = ''.join([ch for ch in text if ch not in string.punctuation])
-    return text
+# App Header
+st.markdown("""
+    <h1 style='text-align: center;'>🕵️‍♂️ Fake News Detector</h1>
+    <p style='text-align: center;'>Predict whether a news article is <b>FAKE</b> or <b>REAL</b>.</p>
+""", unsafe_allow_html=True)
 
-# Streamlit UI setup
-st.set_page_config(page_title="Fake News Detector", layout="centered")
-st.title("📰 Fake News Detector")
-st.markdown("Paste a news article or headline to detect if it's **Fake** or **Real**.")
+# News Input Form
+with st.form(key="prediction_form"):
+    st.subheader("📰 Enter News Details")
+    title = st.text_input("News Title", placeholder="Enter the news headline...")
+    body = st.text_area("News Body", placeholder="Paste the full news article here...", height=200)
+    predict_button = st.form_submit_button("🚀 Predict")
 
-# Text input
-user_input = st.text_area("Enter News Text (Max 500 characters)", max_chars=500, height=200)
-
-# Simple keyword sanity lists
-real_keywords = ['ministry', 'government', 'official', 'announced', 'award', 'released', 'filmfare', 'prime minister']
-fake_keywords = ['shocking', 'click here', 'miracle', 'you won’t believe', 'hoax', 'conspiracy']
-
-# On prediction button click
-if st.button("Predict"):
-    if not user_input.strip():
-        st.warning("Please enter some news content.")
+# Prediction Logic
+if predict_button:
+    if not title.strip() or not body.strip():
+        st.warning("⚠️ Please fill in both the title and the body of the news.")
     else:
-        cleaned = clean_text(user_input)
-        vectorized = vectorizer.transform([cleaned])
-        proba = model.predict_proba(vectorized)[0]
-        prediction = np.argmax(proba)
-        confidence = round(np.max(proba) * 100, 2)
+        combined_text = f"{title.strip()} {body.strip()}"
 
-        fake_confidence = round(proba[1] * 100, 2)
-        real_confidence = round(proba[0] * 100, 2)
+        # Check for feedback override
+        label_from_feedback = None
+        if os.path.exists(FEEDBACK_PATH):
+            try:
+                feedback_df = pd.read_csv(FEEDBACK_PATH)
+                match = feedback_df[
+                    (feedback_df["title"] == title.strip()) &
+                    (feedback_df["text"] == body.strip())
+                ]
+                if not match.empty:
+                    label_from_feedback = match.iloc[-1]["label"]
+            except Exception as e:
+                st.error(f"Error reading feedback: {e}")
 
-        # Contextual words
-        is_real_context = any(word in cleaned for word in real_keywords)
-        is_fake_context = any(word in cleaned for word in fake_keywords)
-
-        # Final decision with more trust threshold
-        if fake_confidence >= 90:
-            st.error(f"🔴 This news is **FAKE** (Confidence: {fake_confidence}%)")
-        elif real_confidence >= 60:
-            st.success(f"🟢 This news is **REAL** (Confidence: {real_confidence}%)")
-        elif is_real_context and fake_confidence < 90:
-            st.warning(f"⚠️ Possibly **REAL**, but model predicted **FAKE** (Confidence: {fake_confidence}%)")
+        # Use feedback label if available
+        if label_from_feedback:
+            if label_from_feedback == "FAKE":
+                st.error("🛑 This news is marked as **FAKE** based on previous feedback.")
+            else:
+                st.success("✅ This news is marked as **REAL** based on previous feedback.")
         else:
-            st.warning(f"⚠️ Uncertain. Model predicts FAKE with {fake_confidence}% confidence.")
+            # Model prediction
+            transformed_text = vectorizer.transform([combined_text])
+            prediction = model.predict(transformed_text)[0]
 
+            if prediction == "FAKE":
+                st.error("🛑 This news is predicted to be **FAKE**.")
+            else:
+                st.success("✅ This news is predicted to be **REAL**.")
+
+# Feedback Submission
+with st.expander("💬 Submit Feedback (optional)"):
+    with st.form("feedback_form"):
+        user_feedback = st.radio("How would you label this news?", ["REAL", "FAKE"])
+        submit_feedback = st.form_submit_button("✅ Submit Feedback")
+
+        if submit_feedback:
+            feedback_entry = pd.DataFrame([[title.strip(), body.strip(), user_feedback]], columns=["title", "text", "label"])
+            try:
+                if os.path.exists(FEEDBACK_PATH):
+                    feedback_entry.to_csv(FEEDBACK_PATH, mode="a", header=False, index=False)
+                else:
+                    feedback_entry.to_csv(FEEDBACK_PATH, index=False)
+                st.success("🎉 Thank you! Your feedback has been recorded.")
+            except Exception as e:
+                st.error(f"Error saving feedback: {e}")
+
+# Feedback Viewer
+with st.expander("📂 View Submitted Feedback"):
+    if os.path.exists(FEEDBACK_PATH):
+        feedback_data = pd.read_csv(FEEDBACK_PATH)
+        st.dataframe(feedback_data)
+    else:
+        st.info("No feedback submitted yet.")
+
+# Footer
+st.markdown("""
+    <hr>
+    <p style='text-align: center;'>Made by Rahul 🚀 | Streamlit + ML Project</p>
+""", unsafe_allow_html=True)
