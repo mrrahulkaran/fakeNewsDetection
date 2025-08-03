@@ -83,8 +83,10 @@ with st.expander("💬 Submit Feedback (optional)"):
                 st.error(f"Error saving feedback: {e}")
 
     # ✅ Safe: Add Home button *outside* the form
-    if st.button("🏠 Go to Home"):
-        st.experimental_rerun()
+    # ✅ Home button (safe placement outside form)
+if st.button("🏠 Go to Home"):
+    st.rerun()
+
 # Feedback Viewer
 with st.expander("📂 View Submitted Feedback"):
     if os.path.exists(FEEDBACK_PATH):
