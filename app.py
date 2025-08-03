@@ -84,7 +84,7 @@ with st.expander("💬 Submit Feedback (optional)"):
 
     # ✅ Safe: Add Home button *outside* the form
     # ✅ Home button (safe placement outside form)
-if st.button("🏠 Go to Home"):
+if st.button("🏠 New Search"):
     st.rerun()
 
 # Feedback Viewer
