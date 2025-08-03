@@ -66,22 +66,21 @@ if predict_button:
                 st.success("✅ This news is predicted to be **REAL**.")
 
 # Feedback Submission
-with st.expander("💬 Submit Feedback (optional)"):
-    with st.form("feedback_form"):
-        user_feedback = st.radio("How would you label this news?", ["REAL", "FAKE"])
-        submit_feedback = st.form_submit_button("✅ Submit Feedback")
+if submit_feedback:
+    feedback_entry = pd.DataFrame([[title.strip(), body.strip(), user_feedback]], columns=["title", "text", "label"])
+    try:
+        if os.path.exists(FEEDBACK_PATH):
+            feedback_entry.to_csv(FEEDBACK_PATH, mode="a", header=False, index=False)
+        else:
+            feedback_entry.to_csv(FEEDBACK_PATH, index=False)
+        st.success("🎉 Thank you! Your feedback has been recorded.")
 
-        if submit_feedback:
-            feedback_entry = pd.DataFrame([[title.strip(), body.strip(), user_feedback]], columns=["title", "text", "label"])
-            try:
-                if os.path.exists(FEEDBACK_PATH):
-                    feedback_entry.to_csv(FEEDBACK_PATH, mode="a", header=False, index=False)
-                else:
-                    feedback_entry.to_csv(FEEDBACK_PATH, index=False)
-                st.success("🎉 Thank you! Your feedback has been recorded.")
-            except Exception as e:
-                st.error(f"Error saving feedback: {e}")
+        # Add Home button
+        if st.button("🏠 Return to Home"):
+            st.experimental_rerun()
 
+    except Exception as e:
+        st.error(f"Error saving feedback: {e}")
 # Feedback Viewer
 with st.expander("📂 View Submitted Feedback"):
     if os.path.exists(FEEDBACK_PATH):
